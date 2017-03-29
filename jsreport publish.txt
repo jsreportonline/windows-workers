@@ -1,0 +1,2 @@
+Import-AzurePublishSettingsFile e:\work\azure.publishsettings
+Publish-AzureServiceProject
