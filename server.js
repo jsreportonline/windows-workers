@@ -8,6 +8,9 @@ const uuid = require('uuid').v1
 const async = require('async')
 const tmpDir = path.join(require('os').tmpdir(), 'jsreport')
 const cluster = require('cluster')
+const os = require('os')
+
+const bodyLimit = 50e6
 
 if (cluster.isMaster) {
     cluster.fork()
@@ -21,7 +24,7 @@ if (cluster.isMaster) {
 
 process.on('uncaughtException', (err) => {
   console.error(err)
-  fs.appendFileSync('err.txt', err.stack)  
+  fs.appendFileSync('err.txt', os.EOL + new Date() + ' ' +  err.stack)  
   process.exit(1);
 })
 
@@ -142,17 +145,39 @@ const server = http.createServer((req, res) => {
   var data = ''
   req.on('data', function (chunk) {
     data += chunk.toString()
+
+    if (data.length > bodyLimit) {
+      console.log('Input request exceeded bodyLimit')
+      fs.appendFileSync('err.txt', os.EOL + new Date() + ' Input request exceeded bodyLimit: ' + data.substring(0, 100))  
+      res.writeHead(500)      
+      res.end('Input request exceeded bodyLimit')      
+      res.destroy()
+    }
   })
 
   req.on('end', function () {
-    const opts = JSON.parse(data).data
+    if (res.finished) {
+      return
+    }
 
-    console.log('request... ' + opts.recipe)
+    let json
+    try {
+      json = JSON.parse(data)
+    } catch (e) {
+      console.log('Invalid json send to the windows worker')
+      fs.appendFileSync('err.txt', os.EOL + new Date() + ' Invalid json send to the windows worker: ' + data.substring(0, Math.min(1000, data.length))) 
+      res.writeHead(500)      
+      return res.end('Invalid json send to the windows worker')      
+    }
+
+    const opts = json.data         
 
     if (opts.recipe === 'wkhtmltopdf') {
+      console.log('running wkhtmltopdf')
       return wkhtmltopdf(opts, req, res)
     }
 
+    console.log('running phantom')
     return phantom(opts, req, res)
   })
 })
