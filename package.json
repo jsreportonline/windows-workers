@@ -8,10 +8,11 @@
     "phantom-html-to-pdf": "0.4.5",
     "reap": "0.1.0",
     "stream-to-array": "2.3.0",
-    "uuid": "2.0.2"
+    "uuid": "2.0.2",
+    "winser": "^1.0.2"
   },
-  "devDependencies": {},
-  "scripts": {},
+  "scripts": {"start": "node server.js"},
+  "devDependencies": {},  
   "author": "Jan Blaha",
   "license": "AGPU"
 }

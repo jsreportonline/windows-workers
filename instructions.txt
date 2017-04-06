@@ -1,0 +1,9 @@
+npm install
+compress 
+upload to the server C:\app
+decompress
+start.cmd
+
+
+settings new password
+net user Administrator "new_password"
