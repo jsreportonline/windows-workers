@@ -15,7 +15,7 @@ if (cluster.isMaster) {
   let exit = false
   cluster.fork()
 
-  cluster.on('disconnect', function (worker) {    
+  cluster.on('disconnect', function (worker) {
     console.log('forking')
     if (!exit) {
       cluster.fork()
@@ -29,72 +29,90 @@ if (cluster.isMaster) {
   })
 
   console.log('master process running as ' + process.pid)
-  return
-}
+} else {
+  let exit = false
 
-let exit = false
+  process.on("SIGINT", () => {
+    exit = true
+  })
 
-process.on("SIGINT", () => {
-  exit = true
-})
+  process.on('uncaughtException', (err) => {
+    console.error(err)
+    fs.appendFileSync('err.txt', os.EOL + new Date() + ' ' + err.stack)
+    process.exit(1);
+  })
 
-process.on('uncaughtException', (err) => {
-  console.error(err)
-  fs.appendFileSync('err.txt', os.EOL + new Date() + ' ' + err.stack)
-  process.exit(1);
-})
+  const conversion = require('phantom-html-to-pdf')({
+    numberOfWorkers: 2,
+    tmpDir: tmpDir
+  })
 
-const conversion = require('phantom-html-to-pdf')({
-  numberOfWorkers: 2,
-  tmpDir: tmpDir
-})
+  const exactMatch = /(phantomjs-exact-[-0-9]*)/
 
-const exactMatch = /(phantomjs-exact-[-0-9]*)/
+  const resolvePhantomPath = (phantomPath) => {
+    const match = exactMatch.exec(phantomPath)
 
-const resolvePhantomPath = (phantomPath) => {
-  const match = exactMatch.exec(phantomPath)
-
-  if (match && match.length === 2) {
-    return require(match[1]).path
-  }
-
-  return require('phantomjs').path
-}
-
-const processPart = (opts, id, partName, cb) => {
-  if (!opts[partName]) {
-    return cb()
-  }
-
-  fs.writeFile(path.join(tmpDir, `${id}-${partName}.html`), opts[partName], (err) => {
-    if (err) {
-      return cb(err)
+    if (match && match.length === 2) {
+      return require(match[1]).path
     }
 
-    opts.args.push(`--${partName}`)
-    opts.args.push(path.join(tmpDir, `${id}-${partName}.html`))
-    cb()
-  })
-}
+    return require('phantomjs').path
+  }
 
-const wkhtmltopdf = (opts, req, res) => {
-  const id = uuid()
+  const processPart = (opts, id, partName, cb) => {
+    if (!opts[partName]) {
+      return cb()
+    }
 
-  async.waterfall([
-    (cb) => fs.writeFile(path.join(tmpDir, `${id}.html`), opts.html, cb),
-    (cb) => processPart(opts, id, 'header-html', cb),
-    (cb) => processPart(opts, id, 'footer-html', cb),
-    (cb) => processPart(opts, id, 'cover', cb),
-    (cb) => {
-      opts.args.push(path.join(tmpDir, `${id}.html`))
-      opts.args.push(path.join(tmpDir, `${id}.pdf`))
-      console.log(opts.args)
+    fs.writeFile(path.join(tmpDir, `${id}-${partName}.html`), opts[partName], (err) => {
+      if (err) {
+        return cb(err)
+      }
+
+      opts.args.push(`--${partName}`)
+      opts.args.push(path.join(tmpDir, `${id}-${partName}.html`))
       cb()
-    },
-    (cb) => execFile('wkhtmltopdf.exe', opts.args, cb)], (err) => {
+    })
+  }
+
+  const wkhtmltopdf = (opts, req, res) => {
+    const id = uuid()
+
+    async.waterfall([
+      (cb) => fs.writeFile(path.join(tmpDir, `${id}.html`), opts.html, cb),
+      (cb) => processPart(opts, id, 'header-html', cb),
+      (cb) => processPart(opts, id, 'footer-html', cb),
+      (cb) => processPart(opts, id, 'cover', cb),
+      (cb) => {
+        opts.args.push(path.join(tmpDir, `${id}.html`))
+        opts.args.push(path.join(tmpDir, `${id}.pdf`))
+        console.log(opts.args)
+        cb()
+      },
+      (cb) => execFile('wkhtmltopdf.exe', opts.args, cb)], (err) => {
+        if (err) {
+          res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json')
+          return res.end(JSON.stringify({
+            error: {
+              message: err.message,
+              stack: err.stack
+            }
+          }))
+        }
+
+        const stream = fs.createReadStream(path.join(tmpDir, `${id}.pdf`))
+        stream.pipe(res)
+      })
+  }
+
+  const phantom = (opts, req, res) => {
+    opts.phantomPath = resolvePhantomPath(opts.phantomPath)
+    conversion(opts, (err, pdf) => {
       if (err) {
         res.statusCode = 400
         res.setHeader('Content-Type', 'application/json')
+
         return res.end(JSON.stringify({
           error: {
             message: err.message,
@@ -103,102 +121,81 @@ const wkhtmltopdf = (opts, req, res) => {
         }))
       }
 
-      const stream = fs.createReadStream(path.join(tmpDir, `${id}.pdf`))
-      stream.pipe(res)
+      toArray(pdf.stream, (err, arr) => {
+        res.statusCode = 200
+        res.setHeader('Content-Type', 'application/json')
+
+        delete pdf.stream
+        pdf.content = Buffer.concat(arr).toString('base64')
+        res.end(JSON.stringify(pdf))
+      })
     })
-}
-
-const phantom = (opts, req, res) => {
-  opts.phantomPath = resolvePhantomPath(opts.phantomPath)
-  conversion(opts, (err, pdf) => {
-    if (err) {
-      res.statusCode = 400
-      res.setHeader('Content-Type', 'application/json')
-
-      return res.end(JSON.stringify({
-        error: {
-          message: err.message,
-          stack: err.stack
-        }
-      }))
-    }
-
-    toArray(pdf.stream, (err, arr) => {
-      res.statusCode = 200
-      res.setHeader('Content-Type', 'application/json')
-
-      delete pdf.stream
-      pdf.content = Buffer.concat(arr).toString('base64')
-      res.end(JSON.stringify(pdf))
-    })
-  })
-}
-
-const reaper = () => {
-
-  if (!fs.existsSync(tmpDir)) {
-    fs.mkdirSync(tmpDir)
   }
 
-  const reaper = new Reaper({ threshold: 180000 })
+  const reaper = () => {
+    if (!fs.existsSync(tmpDir)) {
+      fs.mkdirSync(tmpDir)
+    }
 
-  reaper.watch(tmpDir)
+    const reaper = new Reaper({ threshold: 180000 })
 
-  reaper.start((err, files) => { })
+    reaper.watch(tmpDir)
 
-  setInterval(() => {
     reaper.start((err, files) => { })
-  }, 30000 /* check every 30s for old files */).unref()
-}
 
-const server = http.createServer((req, res) => {
-  if (req.method === 'GET') {    
-    res.statusCode = 200
-    res.setHeader('Content-Type', 'text/plain')
-    return res.end(exit ? 'EXIT' : 'OK')
+    setInterval(() => {
+      reaper.start((err, files) => { })
+    }, 30000 /* check every 30s for old files */).unref()
   }
 
-  var data = ''
-  req.on('data', function (chunk) {
-    data += chunk.toString()    
-
-    if (data.length > bodyLimit) {
-      console.log('Input request exceeded bodyLimit')
-      fs.appendFileSync('err.txt', os.EOL + new Date() + ' Input request exceeded bodyLimit: ' + data.substring(0, 100))
-      res.writeHead(500)
-      res.end('Input request exceeded bodyLimit')
-      res.destroy()
+  const server = http.createServer((req, res) => {
+    if (req.method === 'GET') {
+      res.statusCode = 200
+      res.setHeader('Content-Type', 'text/plain')
+      return res.end(exit ? 'EXIT' : 'OK')
     }
+
+    var data = ''
+    req.on('data', function (chunk) {
+      data += chunk.toString()
+
+      if (data.length > bodyLimit) {
+        console.log('Input request exceeded bodyLimit')
+        fs.appendFileSync('err.txt', os.EOL + new Date() + ' Input request exceeded bodyLimit: ' + data.substring(0, 100))
+        res.writeHead(500)
+        res.end('Input request exceeded bodyLimit')
+        res.destroy()
+      }
+    })
+
+    req.on('end', function () {
+      if (res.finished) {
+        return
+      }
+
+      let json
+      try {
+        json = JSON.parse(data)
+      } catch (e) {
+        console.log('Invalid json send to the windows worker')
+        fs.appendFileSync('err.txt', os.EOL + new Date() + ' Invalid json send to the windows worker: ' + data.substring(0, Math.min(1000, data.length)))
+        res.writeHead(500)
+        return res.end('Invalid json send to the windows worker')
+      }
+
+      const opts = json.data
+
+      if (opts.recipe === 'wkhtmltopdf') {
+        console.log('running wkhtmltopdf')
+        return wkhtmltopdf(opts, req, res)
+      }
+
+      console.log('running phantom')
+      return phantom(opts, req, res)
+    })
   })
 
-  req.on('end', function () {
-    if (res.finished) {
-      return
-    }
-
-    let json
-    try {
-      json = JSON.parse(data)
-    } catch (e) {
-      console.log('Invalid json send to the windows worker')
-      fs.appendFileSync('err.txt', os.EOL + new Date() + ' Invalid json send to the windows worker: ' + data.substring(0, Math.min(1000, data.length)))
-      res.writeHead(500)
-      return res.end('Invalid json send to the windows worker')
-    }
-
-    const opts = json.data
-
-    if (opts.recipe === 'wkhtmltopdf') {
-      console.log('running wkhtmltopdf')
-      return wkhtmltopdf(opts, req, res)
-    }
-
-    console.log('running phantom')
-    return phantom(opts, req, res)
-  })
-})
-
-reaper()
-server.listen(process.env.PORT || 80)
-console.log('listening on ' + process.env.PORT || 80)
-
+  reaper()
+  server.listen(process.env.PORT || 80)
+  console.log('listening on ' + process.env.PORT || 80)
+}

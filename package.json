@@ -11,8 +11,14 @@
     "uuid": "2.0.2",
     "winser": "^1.0.2"
   },
-  "scripts": {"start": "node server.js"},
-  "devDependencies": {},  
+  "scripts": {
+    "start": "node server.js",
+    "lint": "standard"
+  },
+  "devDependencies": {
+    "eslint": "3.19.0",
+    "standard": "9.0.2"
+  },
   "author": "Jan Blaha",
   "license": "AGPU"
 }
