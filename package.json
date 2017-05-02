@@ -9,7 +9,7 @@
     "reap": "0.1.0",
     "stream-to-array": "2.3.0",
     "uuid": "3.0.1",
-    "winser": "^1.0.2"
+    "winser": "1.0.2"
   },
   "scripts": {
     "start": "node server.js",
