@@ -4,11 +4,11 @@
   "description": "phantomjs workers for jsreportonline",
   "main": "server.js",
   "dependencies": {
-    "async": "2.0.1",
-    "phantom-html-to-pdf": "0.4.5",
+    "async": "2.4.0",
+    "phantom-html-to-pdf": "0.5.2",
     "reap": "0.1.0",
     "stream-to-array": "2.3.0",
-    "uuid": "2.0.2",
+    "uuid": "3.0.1",
     "winser": "^1.0.2"
   },
   "scripts": {
