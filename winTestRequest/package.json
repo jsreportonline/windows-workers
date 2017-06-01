@@ -1,0 +1,15 @@
+{
+  "name": "winTestRequest",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "BJR Matos <bjrmatos@gmail.com> (https://github.com/bjrmatos)",
+  "license": "MIT",
+  "dependencies": {
+    "request": "2.81.0"
+  }
+}
