@@ -77,6 +77,7 @@ if (cluster.isMaster) {
 
   const wkhtmltopdf = (opts, req, res) => {
     const id = uuid()
+    const timeout = 60000
 
     async.waterfall([
       (cb) => fs.writeFile(path.join(tmpDir, `${id}.html`), opts.html, cb),
@@ -89,7 +90,39 @@ if (cluster.isMaster) {
         console.log(opts.args)
         cb()
       },
-      (cb) => execFile('wkhtmltopdf.exe', opts.args, cb)], (err) => {
+      (cb) => {
+        let handled = false
+        let child
+
+        let timeoutId = setTimeout(() => {
+          if (handled) {
+            return
+          }
+
+          handled = true
+
+          if (child) {
+            child.kill()
+          }
+
+          cb(new Error(`wkhtmltopdf timeout error, no result after ${timeout}ms`))
+        }, timeout)
+
+        child = execFile('wkhtmltopdf.exe', opts.args, (err) => {
+          if (handled) {
+            return
+          }
+
+          handled = true
+          clearTimeout(timeoutId)
+
+          if (err) {
+            return cb(err)
+          }
+
+          cb()
+        })
+      }], (err) => {
         if (err) {
           res.statusCode = 400
           res.setHeader('Content-Type', 'application/json')
