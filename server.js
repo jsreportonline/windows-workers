@@ -77,7 +77,7 @@ if (cluster.isMaster) {
 
   const wkhtmltopdf = (opts, req, res) => {
     const id = uuid()
-    const timeout = 60000
+    const timeout = 20000
 
     async.waterfall([
       (cb) => fs.writeFile(path.join(tmpDir, `${id}.html`), opts.html, cb),
