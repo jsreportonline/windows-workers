@@ -188,13 +188,13 @@ if (cluster.isMaster) {
       return res.end(exit ? 'EXIT' : 'OK')
     }
 
-    var data = ''
+    var data = []
     req.on('data', function (chunk) {
-      data += chunk.toString()
+      data.push(chunk)
 
       if (data.length > bodyLimit) {
         console.log('Input request exceeded bodyLimit')
-        fs.appendFileSync('err.txt', os.EOL + new Date() + ' Input request exceeded bodyLimit: ' + data.substring(0, 100))
+        fs.appendFileSync('err.txt', os.EOL + new Date() + ' Input request exceeded bodyLimit: ' + Buffer.concat(data).toString().substring(0, 100))
         res.writeHead(500)
         res.end('Input request exceeded bodyLimit')
         res.destroy()
@@ -208,6 +208,7 @@ if (cluster.isMaster) {
 
       let json
       try {
+        data = Buffer.concat(data).toString()
         json = JSON.parse(data)
       } catch (e) {
         console.log('Invalid json send to the windows worker')
